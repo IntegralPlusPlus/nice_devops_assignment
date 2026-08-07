@@ -3,6 +3,7 @@ from aws_cdk import (
     RemovalPolicy,
     CfnOutput,
     aws_s3 as s3,
+    aws_s3_deployment as s3deploy
 )
 from constructs import Construct
 
@@ -21,4 +22,14 @@ class NiceAssignmentStack(Stack):
                            enforce_ssl=True,
                            auto_delete_objects=True)
 
+        # Deploy files from sample_file/ to the s3 bucket
+        s3deploy.BucketDeployment(self, 
+                                  "SampleFilesDeployment",
+                                  sources=[s3deploy.Source.asset("sample_files")],
+                                  destination_key_prefix="sample-data/",
+                                  destination_bucket=bucket,
+                                  retain_on_delete=False,
+                                  prune=True
+                                  )
+        
         CfnOutput(self, "BucketName", value=bucket.bucket_name)
