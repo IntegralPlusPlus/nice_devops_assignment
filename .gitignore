@@ -3,6 +3,7 @@ __pycache__
 .pytest_cache
 .venv
 *.egg-info
+nice_assignment/__pycache__
 
 # CDK asset staging directory
 .cdk.staging
