@@ -13,6 +13,8 @@ class GitHubOidcStack(Stack):
     def __init__(self, 
                  scope: Construct, 
                  construct_id: str, 
+                 app_stack_name: str,
+                 lambda_function_name: str,
                  github_repo: str,
                  existing_provider_arn: str | None = None,
                  **kwargs,) -> None:
@@ -90,6 +92,28 @@ class GitHubOidcStack(Stack):
                 actions=["ssm:GetParameter"],
                 resources=[
                     f"arn:aws:ssm:{self.region}:{self.account}:parameter/cdk-bootstrap/{self.BOOTSTRAP_QUALIFIER}/version"
+                ],
+            )
+        )
+
+        # Add access to list S3
+        deploy_role.add_to_policy(
+            iam.PolicyStatement(
+                sid="SmokeTestListBucket",
+                effect=iam.Effect.ALLOW,
+                actions=["s3:ListBucket"],
+                resources=[f"arn:aws:s3:::{app_stack_name.lower()}-*"],
+            )
+        )
+
+        # Add access to invoke lambda
+        deploy_role.add_to_policy(
+            iam.PolicyStatement(
+                sid="SmokeTestInvokeLambda",
+                effect=iam.Effect.ALLOW,
+                actions=["lambda:InvokeFunction"],
+                resources=[
+                    f"arn:aws:lambda:{self.region}:{self.account}:function:{lambda_function_name}"
                 ],
             )
         )

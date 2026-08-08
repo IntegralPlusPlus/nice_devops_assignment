@@ -6,6 +6,9 @@ import aws_cdk as cdk
 from nice_assignment.nice_assignment_stack import NiceAssignmentStack
 from nice_assignment.github_oidc_stack import GitHubOidcStack
 
+APP_STACK_NAME = "NiceAssignmentStack"
+LAMBDA_FUNCTION_NAME = "s3_lister"
+
 app = cdk.App()
 
 env = cdk.Environment(account=os.environ["CDK_DEFAULT_ACCOUNT"], 
@@ -20,6 +23,8 @@ if github_repo:
         app,
         "GitHubOidcStack",
         github_repo=github_repo,
+        app_stack_name=APP_STACK_NAME,
+        lambda_function_name=LAMBDA_FUNCTION_NAME,
         existing_provider_arn=app.node.try_get_context("existing_oidc_provider_arn"),
         env=env,
         description="One-time CI/CD bootstrap: GitHub OIDC provider and deploy role",
