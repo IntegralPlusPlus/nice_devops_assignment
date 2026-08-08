@@ -10,6 +10,7 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -32,6 +33,7 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: "3.13"
+          cache: 'pip'
 
       - name: Install Python dependencies
         run: |
@@ -46,3 +48,32 @@ jobs:
 
       - name: Deploy Stack
         run: cdk deploy NiceAssignmentStack --require-approval never --outputs-file cdk-outputs.json
+
+      - name: Verify sample files were uploaded to S3
+        run: |
+          BUCKET=$(python -c "import json;print(json.load(open('cdk-outputs.json'))['NiceAssignmentStack']['BucketName'])")
+          aws s3 ls "s3://$BUCKET" --recursive
+
+      - name: Invoke Lambda (smoke test)
+        run: |
+          FN=$(python -c "import json;print(json.load(open('cdk-outputs.json'))['NiceAssignmentStack']['LambdaFunctionName'])")
+          aws lambda invoke --function-name "$FN" \
+            --cli-binary-format raw-in-base64-out \
+            --payload file://events/test-event.json \
+            --query 'FunctionError' --output text \
+            response.json > function-error.txt
+          cat response.json
+          [ "$(cat function-error.txt)" = "None" ] || { echo "::error::Lambda failed"; exit 1; }
+
+      - name: Write run summary
+        run: |
+          {
+            echo "Stack outputs"
+            echo '```json'
+            cat cdk-outputs.json
+            echo '```'
+            echo "Lambda response" 
+            echo '```json'
+            cat response.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
