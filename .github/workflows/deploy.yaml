@@ -33,10 +33,16 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Install AWS CDK CLI
-        run: npm install -g aws-cdk
-
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+
+      - name: Install AWS CDK CLI
+        run: npm install -g aws-cdk
+
+      - name: Synth Stack
+        run: cdk synth NiceAssignmentStack
+
+      - name: Deploy Stack
+        run: cdk deploy NiceAssignmentStack --require-approval never --outputs-file cdk-outputs.json
