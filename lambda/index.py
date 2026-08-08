@@ -36,8 +36,8 @@ def build_message(list_files: list, size_sum: int, context) -> str:
                 f"Time: {time_now}\n"
                 f"Number of files: {len(list_files)}\n"
                 f"Total size: {size_sum} bytes\n"
-                f"Function:   {context.function_name}"
-                f"Request ID: {context.aws_request_id}"
+                f"Function:   {context.function_name}\n"
+                f"Request ID: {context.aws_request_id}\n"
                 f"Files: \n")
 
     for obj in list_files:
@@ -54,7 +54,7 @@ def handler(event, context):
     response = build_message(list_files_s3, size_sum, context)
 
     published = sns.publish(TopicArn=TOPIC_ARN, 
-                            Subject = f"S3 notification from {BUCKET_NAME}", 
+                            Subject = f"S3 notification from {BUCKET_NAME}"[:100], # added :100 because of 
                             Message=response)
     
     logger.info("Published to SNS, MessageId=%s", published["MessageId"])

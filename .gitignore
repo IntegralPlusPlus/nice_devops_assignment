@@ -4,9 +4,8 @@ __pycache__
 .venv
 *.egg-info
 nice_assignment/__pycache__
-lambda/local_runner.py
-lambda/__pycache__
 response.json
+invoke.log
 
 # CDK asset staging directory
 .cdk.staging

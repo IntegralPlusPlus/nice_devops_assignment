@@ -1,0 +1,6 @@
+{
+  "source": "manual-test",
+  "trigger": ["aws-cli", "sdk"],
+  "description": "Manual invocation of the S3 lister Lambda for assignment verification",
+  "requested_by": "student"
+}
