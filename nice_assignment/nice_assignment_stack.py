@@ -130,14 +130,26 @@ class NiceAssignmentStack(Stack):
             },
         )
 
-        # Output bucket name
+        # Stack outputs
         CfnOutput(self, "BucketName", value=bucket.bucket_name, description="S3 bucket")
-
-        # Output sns topic
         CfnOutput(self, "TopicArn", value=topic.topic_arn, description="SNS topic")
-
-        # Output lambda function name
         CfnOutput(self, "LambdaFunctionName", value=lister_fn.function_name)
-
-        # Output lambda function arn
         CfnOutput(self, "LambdaRoleArn", value=lambda_role.role_arn)
+
+        # Developer experience CLI commands
+        # Exporting ready-to-use commands to the console to speed up local testing and debugging
+        CfnOutput(
+            self, "ManualInvokeCommand",
+            value=(
+                f"aws lambda invoke --function-name {lister_fn.function_name} "
+                f"--cli-binary-format raw-in-base64-out "
+                f"--payload file://events/test-event.json response.json"
+            ),
+            description="Copy-paste command for manual testing (works in PowerShell, cmd and bash)",
+        )
+
+        CfnOutput(
+            self, "TailLogsCommand",
+            value=f"aws logs tail {log_group.log_group_name} --since 10m --follow",
+            description="Copy-paste command to watch Lambda logs",
+        )
