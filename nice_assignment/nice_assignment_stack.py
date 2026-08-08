@@ -141,11 +141,3 @@ class NiceAssignmentStack(Stack):
 
         # Output lambda function arn
         CfnOutput(self, "LambdaRoleArn", value=lambda_role.role_arn)
-
-        # Output manual invoke command
-        CfnOutput(self,
-                "ManualInvokeCommand",
-                value=(
-                    f"aws lambda invoke --function-name {function_name} "
-                    ),
-        )
