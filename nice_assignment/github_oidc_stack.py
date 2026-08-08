@@ -45,6 +45,7 @@ class GitHubOidcStack(Stack):
         # 2. 'sub': Makes sure the request comes from our exact repository.
         #    The '*' allows all branches (include main). This is our main defense to keep other 
         #    GitHub users out of our AWS account
+        owner, repo = github_repo.split("/")
         principal_policy = iam.OpenIdConnectPrincipal(
             provider,
             conditions={
@@ -52,7 +53,10 @@ class GitHubOidcStack(Stack):
                     "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
                 },
                 "StringLike": {
-                    "token.actions.githubusercontent.com:sub": f"repo:{github_repo}:*",
+                    "token.actions.githubusercontent.com:sub": [
+                        f"repo:{owner}@*/{repo}@*:*",  
+                        f"repo:{github_repo}:*"
+                    ],
                 },
             },
         )
