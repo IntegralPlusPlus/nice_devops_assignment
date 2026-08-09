@@ -87,10 +87,10 @@ class NiceAssignmentStack(Stack):
 
         # Add access to read from S3 bucket
         lambda_role.add_to_policy(
-            iam.PolicyStatement(sid="S3ListAndGetAccess",
+            iam.PolicyStatement(sid="S3ListAccess",
                                 effect=iam.Effect.ALLOW,
                                 actions=["s3:ListBucket"],
-                                resources=[bucket.bucket_arn, bucket.arn_for_objects("*")]
+                                resources=[bucket.bucket_arn]
             )
         )
 
