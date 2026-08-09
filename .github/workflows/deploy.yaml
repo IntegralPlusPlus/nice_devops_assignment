@@ -47,11 +47,20 @@ jobs:
       - name: Install AWS CDK CLI
         run: npm install -g aws-cdk
 
+      - name: Resolve notification email
+        run: |
+          EMAIL="${{ secrets.NOTIFICATION_EMAIL }}"
+          echo "EMAIL_ARG=${EMAIL:+-c notification_email=$EMAIL}" >> "$GITHUB_ENV"
+
       - name: Synth Stack
-        run: cdk synth NiceAssignmentStack
+        run: cdk synth NiceAssignmentStack $EMAIL_ARG
 
       - name: Deploy Stack
-        run: cdk deploy NiceAssignmentStack --require-approval never --outputs-file cdk-outputs.json
+        run: |
+          cdk deploy NiceAssignmentStack \
+            --require-approval never \
+            --outputs-file cdk-outputs.json \
+            $EMAIL_ARG
 
       - name: Verify sample files were uploaded to S3
         run: |
