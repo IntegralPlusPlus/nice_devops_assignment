@@ -3,12 +3,15 @@ __pycache__
 .pytest_cache
 .venv
 *.egg-info
-nice_assignment/__pycache__
 response.json
 invoke.log
 source.bat
+
+objects.txt
+function-error.txt
 
 # CDK asset staging directory
 .cdk.staging
 cdk.out
 cdk.context.json
+cdk-outputs.json

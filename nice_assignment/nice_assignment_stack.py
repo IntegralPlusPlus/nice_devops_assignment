@@ -18,8 +18,6 @@ from constructs import Construct
 EMAIL_PARAM_NAME = "/nice-assignment/notification-email"
 
 class NiceAssignmentStack(Stack):
-    # Serverless stack: S3 bucket + Lambda lister + SNS email notifications
-
     def __init__(self, scope: Construct, construct_id: str, notification_email: str | None = None, **kwargs) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
@@ -33,7 +31,7 @@ class NiceAssignmentStack(Stack):
                            auto_delete_objects=True
         )
 
-        # Deploy files from sample_file/ to the s3 bucket
+        # Deploy files from sample_files/ to the s3 bucket
         s3deploy.BucketDeployment(self, 
                                   "SampleFilesDeployment",
                                   sources=[s3deploy.Source.asset("sample_files")],
@@ -46,7 +44,7 @@ class NiceAssignmentStack(Stack):
         # Get the email from the command line (if provided), if not, download the saved email from AWS SSM
         email = notification_email or ssm.StringParameter.value_from_lookup(self, EMAIL_PARAM_NAME)
 
-        # Save the email in AWS SSM securely, this helps us avoid writing real email addresses in the code
+        # Persist the email so the next deployment can read it without -c
         ssm.StringParameter(
             self,
             "NotificationEmailParam",

@@ -1,14 +1,15 @@
 import json
 import base64
 import sys
+
 import boto3
 from pathlib import Path
 
 FUNCTION_NAME = "s3_lister"
-SCRIPT_DIR = Path(__file__).resolve().parent 
+SCRIPT_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = SCRIPT_DIR.parent
 EVENT_FILE = PROJECT_ROOT / "events" / "test-event.json"
-LOG_FILE = Path("invoke.log")
+LOG_FILE = PROJECT_ROOT / "invoke.log"
 
 payload = EVENT_FILE.read_text(encoding="utf-8")
 
@@ -27,7 +28,7 @@ print("------------------------------------------------")
 LOG_FILE.write_text(logs, encoding="utf-8")
 print(f"Logs saved to {LOG_FILE}\n")
 
-print(json.dumps(body))
+print(json.dumps(body, indent=2))
 
 if "FunctionError" in response:
     sys.exit(f"Function error: {response['FunctionError']}")
