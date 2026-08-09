@@ -7,6 +7,10 @@ permissions:
   contents: read
   id-token: write # for OIDC
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -52,7 +56,9 @@ jobs:
       - name: Verify sample files were uploaded to S3
         run: |
           BUCKET=$(python -c "import json;print(json.load(open('cdk-outputs.json'))['NiceAssignmentStack']['BucketName'])")
-          aws s3 ls "s3://$BUCKET" --recursive
+          aws s3 ls "s3://$BUCKET" --recursive | tee objects.txt
+          COUNT=$(wc -l < objects.txt)
+          [ "$COUNT" -gt 0 ] || { echo "::error::Bucket is empty"; exit 1; }
 
       - name: Invoke Lambda (smoke test)
         run: |
@@ -66,14 +72,15 @@ jobs:
           [ "$(cat function-error.txt)" = "None" ] || { echo "::error::Lambda failed"; exit 1; }
 
       - name: Write run summary
+        if: always()
         run: |
           {
-            echo "Stack outputs"
+            echo "### Stack outputs"
             echo '```json'
-            cat cdk-outputs.json
+            cat cdk-outputs.json 2>/dev/null || echo "(deploy did not complete)"
             echo '```'
-            echo "Lambda response" 
+            echo "### Lambda response"
             echo '```json'
-            cat response.json
+            cat response.json 2>/dev/null || echo "(lambda was not invoked)"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
