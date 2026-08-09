@@ -12,6 +12,7 @@ sns = boto3.client("sns")
 
 BUCKET_NAME = os.environ["BUCKET_NAME"]
 TOPIC_ARN = os.environ["TOPIC_ARN"]
+MAX_FILES_IN_EMAIL = 100
 
 def get_data_from_s3() -> tuple[list[str], int]:
     list_files = []
@@ -39,8 +40,11 @@ def build_message(list_files: list, size_sum: int, context) -> str:
                 f"Request ID:      {context.aws_request_id}\n"
                 f"Files: \n")
 
-    for obj in list_files:
+    shown = list_files[:MAX_FILES_IN_EMAIL]
+    for obj in shown:
         response += obj + '\n'
+    if len(list_files) > MAX_FILES_IN_EMAIL:
+        response += f"... and {len(list_files) - MAX_FILES_IN_EMAIL} more\n"
 
     return response
 
@@ -61,6 +65,6 @@ def handler(event, context):
     return {
         "bucket": BUCKET_NAME,
         "object_count": len(list_files_s3),
-        "objects": list_files_s3,
+        "total_size_bytes": size_sum,
         "sns_message_id": published["MessageId"],
     }
