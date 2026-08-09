@@ -1,58 +1,170 @@
+# S3 Lister app
 
-# Welcome to your CDK Python project!
+A small serverless app on AWS for DevOps assignment in NiCE. It creates an S3 bucket, uploads some local files into it during deployment, and runs a Lambda function (`s3_lister`) that lists the objects in the bucket and emails the list through SNS.
 
-This is a blank project for CDK development with Python.
+The only steps outside the code are creating the first IAM user - AWS gives no other way to get initial credentials - and confirming the SNS subscription, which AWS requires by design.
 
-The `cdk.json` file tells the CDK Toolkit how to execute your app.
-
-This project is set up like a standard Python project.  The initialization
-process also creates a virtualenv within this project, stored under the `.venv`
-directory.  To create the virtualenv it assumes that there is a `python3`
-(or `python` for Windows) executable in your path with access to the `venv`
-package. If for any reason the automatic creation of the virtualenv fails,
-you can create the virtualenv manually.
-
-To manually create a virtualenv on MacOS and Linux:
-
+## Layout of the project
 ```
-$ python -m venv .venv
-```
-
-After the init process completes and the virtualenv is created, you can use the following
-step to activate your virtualenv.
-
-```
-$ source .venv/bin/activate
+.github/workflows/deploy.yaml     manual deployment pipeline
+events/test-event.json            payload for manual invocation
+lambda/index.py                   Lambda function
+nice_assignment/                  CDK stacks
+  github_oidc_stack.py            OIDC provider + deploy role for CI pipeline
+  nice_assignment_stack.py        bucket, SNS, IAM role, Lambda
+sample_files/                     files uploaded to the bucket
+scripts/invoke_lambda.py          invoke via boto3, print and save logs
+app.py                            AWS CDK entry point for both stacks
 ```
 
-If you are a Windows platform, you would activate the virtualenv like this:
+## Deploy
+Needs Python 3.13, Node.js 22 (the CDK CLI runs on Node), and a configured AWS CLI.
 
-```
-% .venv\Scripts\activate.bat
-```
+```bash
+npm install -g aws-cdk
+cdk bootstrap aws://<ACCOUNT_ID>/<REGION>     # once per account/region
 
-Once the virtualenv is activated, you can install the required dependencies.
+python -m venv .venv
+source .venv/bin/activate                     # for Windows: .venv\Scripts\activate.bat
+pip install -r requirements.txt
 
-```
-$ pip install -r requirements.txt
-```
-
-At this point you can now synthesize the CloudFormation template for this code.
-
-```
-$ cdk synth
+cdk deploy NiceAssignmentStack -c notification_email=you@example.com    
 ```
 
-To add additional dependencies, for example other CDK libraries, just add
-them to your `requirements.txt` file and rerun the `python -m pip install -r requirements.txt`
-command.
+### Confirm the email
 
-## Useful commands
+AWS sends **"AWS Notification - Subscription Confirmation"** after the first deployment. Click **Confirm subscription** — and check the spam folder, it usually lands there. 
 
- * `cdk ls`          list all stacks in the app
- * `cdk synth`       emits the synthesized CloudFormation template
- * `cdk deploy`      deploy this stack to your default AWS account/region
- * `cdk diff`        compare deployed stack with current state
- * `cdk docs`        open CDK documentation
+You must click the confirmation link sent to your email (expires in 3 days). Until you do, SNS silently drops all notifications. Your Lambda will succeed, but no email will show up.
 
-Enjoy!
+Check your status:
+
+```bash
+aws sns list-subscriptions-by-topic --topic-arn <TopicArn from outputs>
+```
+
+`SubscriptionArn` should be a real ARN, not `PendingConfirmation`.
+
+Later deployment needs no arguments
+```bash
+cdk deploy NiceAssignmentStack
+```
+
+The email address is written to AWS SSM Parameter Store on the first deployment and read back afterwards. That is why no email address appears anywhere in this repo.
+
+## Invoking the Lambda function by hand
+
+Three ways, all hitting the same API.
+
+```bash
+# 1. AWS CLI
+aws lambda invoke --function-name s3_lister \
+  --cli-binary-format raw-in-base64-out \
+  --payload file://events/test-event.json \
+  response.json
+
+# 2. boto3 script — also prints CloudWatch logs, fills invoke.log and exits non-zero on failure
+python scripts/invoke_lambda.py
+```
+3. AWS Console: Lambda -> `s3_lister` -> Test -> paste `events/test-event.json` -> Test.
+
+After the invoke of Lambda function via AWS Console, you will see on your screen (if the function ran correctly):
+
+![lambda_invoke_screen](https://github.com/user-attachments/assets/8399e5ac-185e-43b3-80f8-ad895afaf6bd)
+
+`--cli-binary-format raw-in-base64-out` is required in AWS CLI v2, otherwise you get `Invalid base64`.
+
+**Success** means `object_count` matches the number of files in the bucket and an email arrives with
+the subject `S3 notification from <bucket>`. Note that `StatusCode: 200` does not mean the
+function worked - it only means the request reached Lambda. A crash shows up as a `FunctionError`
+field in the response, which is what the script and the pipeline check.
+
+```bash
+aws logs tail /aws/lambda/s3_lister --since 10m --follow
+```
+
+Example of logs in AWS CLI:
+
+![lambda_logs](https://github.com/user-attachments/assets/79c02fb6-c227-4713-a2e1-5336b717e523)
+
+## CI/CD
+
+`.github/workflows/deploy.yaml` runs on `workflow_dispatch` - a button in the Actions tab, not on
+every push. It authenticates with GitHub OIDC federation, so no AWS keys are stored in GitHub Secrets: GitHub gives a
+short-lived token per run and AWS trades it for temporary credentials.
+
+Two stacks, deployed by different parties:
+
+| Stack | Deployed by | Credentials |
+|---|---|---|
+| `GitHubOidcStack` | you, once, locally | your own |
+| `NiceAssignmentStack` | every run, GitHub Actions | the OIDC role |
+
+The CI role can't create IAM roles (to prevent it from granting itself admin privileges)
+
+Setup:
+
+```bash
+cdk deploy GitHubOidcStack -c github_repo=<owner>/<repo>
+```
+
+Put `DeployRoleArn` from the outputs into the GitHub Secrets as `AWS_DEPLOY_ROLE_ARN`, and the
+region into the variable `AWS_REGION`. Then Actions -> **Deploy Serverless Stack** -> **Run workflow**.
+
+The pipeline deploys, checks the files actually reached the bucket, invokes the Lambda, and writes
+the outputs and the response into the run summary in GitHub Actions.
+
+### GitHub Secrets / Variables
+| Where | Name | Value |
+|---|---|---|
+| Secrets | `AWS_DEPLOY_ROLE_ARN` | `DeployRoleArn` from the stack outputs |
+| Secrets | `NOTIFICATION_EMAIL` | only needed if the stack was never deployed before |
+| Variables | `AWS_REGION` | e.g. `eu-central-1` |
+
+## Design decisions
+
+**OIDC Authentication instead of access keys** 
+I use temporary OIDC tokens instead of permanent AWS keys. If a static key leaks, hackers get access forever. I also locked the AWS role to this exact repository so no other GitHub user can use it.
+
+**Separated CI/CD and App Stacks**
+The GitHub OIDC stack is initialized only once, while the main application stack deploys on every run. I keep them separate for security reasons: the initial setup requires powerful IAM permissions. This separation ensures the daily CI pipeline never holds the rights to create or modify core IAM resources.
+
+**Keeping emails out of public code**
+I use AWS SSM to manage the notification email. By passing it once via the CLI `-c notification_email=`, I avoid hardcoding personal data into a public repository. AWS stores it as a plain `String` parameter; while it's not a strict secret requiring a `SecureString`, it still belongs in the cloud, not in version control. Additionally, `cdk.context.json` is added to `.gitignore` to prevent accidental leaks of this local cache.
+
+**Explicit IAM Statements vs CDK Helpers**
+Using `grant_read()` requires less typing, but it violates the principle of least privilege by generating overly permissive policies. By writing explicit IAM statements, I ensure the Lambda function gets exactly what it needs and nothing more: list the bucket, publish to one topic, and write to its own log group. There are no managed policies and no `Resource: "*"`.
+
+**No `s3:GetObject`** 
+`list_objects_v2` already returns key, size and timestamp, so file contents are never read. Granting it would be a 
+violation of the principle of least privilege.
+
+**`RemovalPolicy.DESTROY`** 
+Fine for a test project, since `cdk destroy` then cleans up fully. In
+anything real this should be `RETAIN` - otherwise deleting the stack silently deletes the data.
+
+## Tools
+
+AWS CDK v2 (Python), Python 3.13, boto3, GitHub Actions with OIDC.
+
+**Choosing CDK:** 
+Besides following the assignment's guidelines, CDK's use of Python is a huge benefit. By referencing the S3 bucket and SNS topic objects directly in the Lambda's environment variables, the framework automatically handles resource linking. This completely eliminates manual synchronization of ARNs and names.
+
+## Cleanup
+
+```bash
+cdk destroy NiceAssignmentStack
+```
+
+`GitHubOidcStack` can stay — it costs nothing and stores no data.
+
+## Known limitations
+
+**One environment** 
+For the scope of this assignment, resource names (e.g., `s3_lister`, `lister-lambda-role`) are explicitly defined. Deploying a second stack in the same AWS account will cause naming collisions. In a real-world production scenario, I would isolate environments (dev/prod) by deploying them into completely separate AWS accounts, rather than polluting resource names with environment suffixes.
+
+**GitHub changed the OIDC subject format**
+Since 15 July 2026 new repositories get immutable IDs in
+the `sub` claim (`repo:owner@123456/repo@789012:...`). A trust policy written for the old format
+rejects everything with `Not authorized to perform sts:AssumeRoleWithWebIdentity`, which looks
+exactly like a missing role. The policy here matches both formats (initially the policy was written for the old format first; the pipeline run surfaced the change).
