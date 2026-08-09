@@ -1,6 +1,6 @@
 # S3 Lister app
 
-A small serverless app on AWS for DevOps assignment in NiCE. It creates an S3 bucket, uploads some local files into it during deployment, and runs a Lambda function (`s3_lister`) that lists the objects in the bucket and emails the list through SNS.
+A small serverless app on AWS for a DevOps assignment in NiCE. It creates an S3 bucket, uploads some local files into it during deployment, and runs a Lambda function (`s3_lister`) that lists the objects in the bucket and emails the list through SNS.
 
 The only steps outside the code are creating the first IAM user - AWS gives no other way to get initial credentials - and confirming the SNS subscription, which AWS requires by design.
 
@@ -52,6 +52,15 @@ cdk deploy NiceAssignmentStack
 
 The email address is written to AWS SSM Parameter Store on the first deployment and read back afterwards. That is why no email address appears anywhere in this repo.
 
+The first deployment must supply the address: `-c notification_email=` locally, or the
+`NOTIFICATION_EMAIL` secret in CI. Without it CDK fails with
+`SSM parameter not available in account ... /nice-assignment/notification-email` - that means
+the parameter has not been created yet, not that your credentials are wrong.
+
+Changing the address later replaces the SNS subscription (its logical ID is derived from the
+email), so a new confirmation message will arrive. Clear the local cache first:
+`cdk context --clear`.
+
 ## Invoking the Lambda function by hand
 
 Three ways, all hitting the same API.
@@ -100,12 +109,22 @@ Two stacks, deployed by different parties:
 | `GitHubOidcStack` | you, once, locally | your own |
 | `NiceAssignmentStack` | every run, GitHub Actions | the OIDC role |
 
-The CI role can't create IAM roles (to prevent it from granting itself admin privileges)
+My CI pipeline role holds no permissions of its own; it can only assume CDK's bootstrap roles.
+That beats storing admin keys in GitHub, but it is not a hard boundary: the role CloudFormation
+actually runs as, `cdk-hnb659fds-cfn-exec-role-*`, has `AdministratorAccess` unless the account
+is re-bootstrapped with `--cloudformation-execution-policies`.
 
 Setup:
 
 ```bash
 cdk deploy GitHubOidcStack -c github_repo=<owner>/<repo>
+```
+
+If the account already has a GitHub OIDC provider, `cdk deploy` fails with `EntityAlreadyExists`.
+Import it instead:
+```bash
+cdk deploy GitHubOidcStack -c github_repo=<owner>/<repo> \
+  -c existing_oidc_provider_arn=arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com
 ```
 
 Put `DeployRoleArn` from the outputs into the GitHub Secrets as `AWS_DEPLOY_ROLE_ARN`, and the
@@ -127,7 +146,7 @@ the outputs and the response into the run summary in GitHub Actions.
 I use temporary OIDC tokens instead of permanent AWS keys. If a static key leaks, hackers get access forever. I also locked the AWS role to this exact repository so no other GitHub user can use it.
 
 **Separated CI/CD and App Stacks**
-The GitHub OIDC stack is initialized only once, while the main application stack deploys on every run. I keep them separate for security reasons: the initial setup requires powerful IAM permissions. This separation ensures the daily CI pipeline never holds the rights to create or modify core IAM resources.
+The GitHub OIDC stack is deployed once, while the application stack redeploys on every run. Keeping them apart means the pipeline's own policy contains no IAM actions at all - every privilege it uses is delegated to the CDK bootstrap roles it assumes.
 
 **Keeping emails out of public code**
 I use AWS SSM to manage the notification email. By passing it once via the CLI `-c notification_email=`, I avoid hardcoding personal data into a public repository. AWS stores it as a plain `String` parameter; while it's not a strict secret requiring a `SecureString`, it still belongs in the cloud, not in version control. Additionally, `cdk.context.json` is added to `.gitignore` to prevent accidental leaks of this local cache.
