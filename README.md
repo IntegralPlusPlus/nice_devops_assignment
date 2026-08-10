@@ -97,7 +97,7 @@ python scripts/invoke_lambda.py
 
 After the invoke of Lambda function via AWS Console, you will see on your screen (if the function ran correctly):
 
-![lambda_invoke_screen](https://github.com/user-attachments/assets/8399e5ac-185e-43b3-80f8-ad895afaf6bd)
+![lambda_invoke_screen](https://github.com/user-attachments/assets/bde9d8fb-b818-4916-badd-790fbe68812f)
 
 `--cli-binary-format raw-in-base64-out` is required in AWS CLI v2, otherwise you get `Invalid base64`.
 
@@ -112,7 +112,7 @@ aws logs tail /aws/lambda/s3_lister --since 10m --follow
 
 Example of logs in AWS CLI:
 
-![lambda_logs](https://github.com/user-attachments/assets/79c02fb6-c227-4713-a2e1-5336b717e523)
+![lambda_logs](https://github.com/user-attachments/assets/5b46759b-7f3d-4c27-8970-7e73d6e7248b)
 
 ## Tests
 
