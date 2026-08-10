@@ -168,7 +168,7 @@ region into the variable `AWS_REGION`. Then Actions -> **Deploy Serverless Stack
 
 The pipeline runs the unit tests first and only deploys if they pass, so a broken template never reaches AWS. After deploying it checks that the files actually reached the bucket, invokes the Lambda, and writes the outputs and the response into the run summary.
 
-![pipeline_run](https://github-production-user-asset-6210df.s3.amazonaws.com/78876157/633846385-42dc716c-6597-4f9d-b17a-7f4ee1c67c0d.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20260810%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260810T170752Z&X-Amz-Expires=300&X-Amz-Signature=38ae2e311ce76d86835fbe4734b6cb55ca3f77ca4242caea33618a52998cde24&X-Amz-SignedHeaders=host&response-content-type=image%2Fpng)
+![pipeline_run](https://github.com/user-attachments/assets/60ca0330-4e38-4138-8149-f3dc06c62336)
 
 ### GitHub Secrets / Variables
 | Where | Name | Value |
