@@ -5,16 +5,31 @@ on:
 
 permissions:
   contents: read
-  id-token: write # for OIDC
 
 defaults:
   run:
     shell: bash
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+          cache: 'pip'
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q
+
   deploy:
+    needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write # for OIDC
     steps:
       - uses: actions/checkout@v7
 
