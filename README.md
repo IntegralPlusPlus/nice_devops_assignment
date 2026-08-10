@@ -4,6 +4,23 @@ A small serverless app on AWS for a DevOps assignment in NiCE. It creates an S3 
 
 The only steps outside the code are creating the first IAM user - AWS gives no other way to get initial credentials - and confirming the SNS subscription, which AWS requires by design.
 
+```mermaid
+flowchart LR
+    subgraph AWS["AWS account — NiceAssignmentStack"]
+        C["Lambda s3_lister"]
+        D["SNS topic"]
+        B[("S3 bucket")]
+    end
+
+    F["You: CLI / SDK / Console"] -.->|invoke| C
+    C -->|publish| D
+    C -->|list_objects_v2| B
+    D -.->|email| E["Your inbox"]
+    
+    A["sample_files/"] -->|upload on deploy| B
+    G["GitHub Actions<br>workflow_dispatch"] -.->|cdk deploy| AWS
+```
+
 ## Layout of the project
 ```
 .github/workflows/deploy.yaml     manual deployment pipeline
