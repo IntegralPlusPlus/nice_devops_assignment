@@ -168,6 +168,8 @@ region into the variable `AWS_REGION`. Then Actions -> **Deploy Serverless Stack
 
 The pipeline runs the unit tests first and only deploys if they pass, so a broken template never reaches AWS. After deploying it checks that the files actually reached the bucket, invokes the Lambda, and writes the outputs and the response into the run summary.
 
+![pipeline_run](https://github-production-user-asset-6210df.s3.amazonaws.com/78876157/633846385-42dc716c-6597-4f9d-b17a-7f4ee1c67c0d.png?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Credential=AKIAVCODYLSA53PQK4ZA%2F20260810%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Date=20260810T170752Z&X-Amz-Expires=300&X-Amz-Signature=38ae2e311ce76d86835fbe4734b6cb55ca3f77ca4242caea33618a52998cde24&X-Amz-SignedHeaders=host&response-content-type=image%2Fpng)
+
 ### GitHub Secrets / Variables
 | Where | Name | Value |
 |---|---|---|
@@ -225,3 +227,12 @@ Since 15 July 2026 new repositories get immutable IDs in
 the `sub` claim (`repo:owner@123456/repo@789012:...`). A trust policy written for the old format
 rejects everything with `Not authorized to perform sts:AssumeRoleWithWebIdentity`, which looks
 exactly like a missing role. The policy here matches both formats (initially the policy was written for the old format first; the pipeline run surfaced the change).
+
+**Region coupling**
+The OIDC role's policy is scoped to the region where `GitHubOidcStack` was deployed. If `vars.AWS_REGION` in GitHub points somewhere else, the role is still assumable but the deploy fails while reading the CDK bootstrap version, and the smoke test would fail with AccessDenied. Both stacks and the variable must point at the same region.
+
+**The trust policy matches any ref**
+The trust policy currently allows any branch or tag `(:*)`. This is safe for now because the workflow is manual (`workflow_dispatch`) and it helps with debugging. For stricter security, we should eventually restrict it to the main branch or a prod environment.
+
+**SSM Parameter circular dependency**
+The application stack both creates and reads the `/nice-assignment/notification-email` parameter, causing a cycle during offline `cdk synth`. A separate config stack would fix this, but we intentionally kept the single-stack design. This allows the entire project to be deployed with one command and ensures a safe failure mode (i.e., `cdk deploy` loudly refuses to run rather than silently deploying a dummy placeholder).
