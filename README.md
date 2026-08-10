@@ -14,6 +14,7 @@ nice_assignment/                  CDK stacks
   nice_assignment_stack.py        bucket, SNS, IAM role, Lambda
 sample_files/                     files uploaded to the bucket
 scripts/invoke_lambda.py          invoke via boto3, print and save logs
+tests/unit/                       unit tests for the stack and the handler
 app.py                            AWS CDK entry point for both stacks
 ```
 
@@ -96,6 +97,24 @@ Example of logs in AWS CLI:
 
 ![lambda_logs](https://github.com/user-attachments/assets/79c02fb6-c227-4713-a2e1-5336b717e523)
 
+## Tests
+
+```bash
+pip install -r requirements-dev.txt
+pytest -q
+```
+
+No AWS credentials are required. The stack tests synthesize the CloudFormation template in memory, and the handler tests replace S3 and SNS with `moto`.
+
+**Infrastructure (`test_nice_assignment_stack.py`)**
+Ensures the S3 bucket is strictly private and encrypted, and verifies the Lambda function is attached to our exact least-privilege IAM role with no `Resource: "*"` wildcards.
+
+**Business Logic (`test_handler_lambda.py`)**
+Tests the Python handler using mocked S3 and SNS clients. It covers edge cases like S3 pagination (handling >1000 objects), empty buckets, total size calculations, and what actually gets published to SNS.
+
+**Robustness**
+The test suite is verified against deliberate breakage. Removing the S3 paginator, detaching the custom IAM role, or adding overly broad permissions will immediately fail the respective tests.
+
 ## CI/CD
 
 `.github/workflows/deploy.yaml` runs on `workflow_dispatch` - a button in the Actions tab, not on
@@ -130,8 +149,7 @@ cdk deploy GitHubOidcStack -c github_repo=<owner>/<repo> \
 Put `DeployRoleArn` from the outputs into the GitHub Secrets as `AWS_DEPLOY_ROLE_ARN`, and the
 region into the variable `AWS_REGION`. Then Actions -> **Deploy Serverless Stack** -> **Run workflow**.
 
-The pipeline deploys, checks the files actually reached the bucket, invokes the Lambda, and writes
-the outputs and the response into the run summary in GitHub Actions.
+The pipeline runs the unit tests first and only deploys if they pass, so a broken template never reaches AWS. After deploying it checks that the files actually reached the bucket, invokes the Lambda, and writes the outputs and the response into the run summary.
 
 ### GitHub Secrets / Variables
 | Where | Name | Value |
@@ -162,9 +180,12 @@ violation of the principle of least privilege.
 Fine for a test project, since `cdk destroy` then cleans up fully. In
 anything real this should be `RETAIN` - otherwise deleting the stack silently deletes the data.
 
+**Offline Unit Tests Only**
+I test the synthesized template and Lambda logic entirely offline. There are no integration tests that deploy to a real AWS account. Spinning up live resources just for testing takes unnecessary time and money for a simple 3-resource stack, especially since the CI/CD pipeline already includes a smoke test to verify the live deployment.
+
 ## Tools
 
-AWS CDK v2 (Python), Python 3.13, boto3, GitHub Actions with OIDC.
+AWS CDK v2 (Python), Python 3.13, boto3, GitHub Actions with OIDC, pytest and moto for tests.
 
 **Choosing CDK:** 
 Besides following the assignment's guidelines, CDK's use of Python is a huge benefit. By referencing the S3 bucket and SNS topic objects directly in the Lambda's environment variables, the framework automatically handles resource linking. This completely eliminates manual synchronization of ARNs and names.
