@@ -1,8 +1,11 @@
 # S3 Lister app
 
-A small serverless app on AWS for a DevOps assignment in NiCE. It creates an S3 bucket, uploads some local files into it during deployment, and runs a Lambda function (`s3_lister`) that lists the objects in the bucket and emails the list through SNS.
+A small serverless app on AWS for a DevOps assignment at NiCE. It creates an S3 bucket, uploads some local files into it during deployment, and runs a Lambda function (`s3_lister`) that lists the objects in the bucket and emails the list through SNS.
 
-The only steps outside the code are creating the first IAM user - AWS gives no other way to get initial credentials - and confirming the SNS subscription, which AWS requires by design.
+The only steps outside the code are creating the first set of credentials — I used an IAM user;
+IAM Identity Center is the option AWS recommends, but its account instances do not support
+permission sets, so a user was simpler here — and confirming the SNS subscription, which AWS
+requires by design.
 
 ```mermaid
 flowchart LR
@@ -31,8 +34,13 @@ nice_assignment/                  CDK stacks
   nice_assignment_stack.py        bucket, SNS, IAM role, Lambda
 sample_files/                     files uploaded to the bucket
 scripts/invoke_lambda.py          invoke via boto3, print and save logs
-tests/unit/                       unit tests for the stack and the handler
+tests/
+  conftest.py                     puts lambda/ on the import path, sets test env
+  unit/                           tests for the stack and the handler
 app.py                            AWS CDK entry point for both stacks
+cdk.json                          tells the CDK CLI how to run app.py
+requirements.txt                  runtime and deployment dependencies
+requirements-dev.txt              adds pytest and moto on top
 ```
 
 ## Deploy
@@ -145,10 +153,10 @@ Two stacks, deployed by different parties:
 | `GitHubOidcStack` | you, once, locally | your own |
 | `NiceAssignmentStack` | every run, GitHub Actions | the OIDC role |
 
-My CI pipeline role holds no permissions of its own; it can only assume CDK's bootstrap roles.
-That beats storing admin keys in GitHub, but it is not a hard boundary: the role CloudFormation
-actually runs as, `cdk-hnb659fds-cfn-exec-role-*`, has `AdministratorAccess` unless the account
-is re-bootstrapped with `--cloudformation-execution-policies`.
+**Pipeline Security Model**
+The CI pipeline role has no permissions to create AWS resources directly; deployment is handled entirely by assuming CDK bootstrap roles. The pipeline role itself is strictly limited to exactly what the smoke test needs: `s3:ListBucket` on the specific bucket and `lambda:InvokeFunction` on the lister function. 
+
+*Security Note:* While this approach safely avoids storing admin keys in GitHub, it is not a complete hard boundary. The underlying CloudFormation role (`cdk-hnb659fds-cfn-exec-role-*`) still operates with default `AdministratorAccess`. In a strict production setup, the account would be re-bootstrapped with `--cloudformation-execution-policies` to restrict these permissions.
 
 Setup:
 
@@ -156,12 +164,18 @@ Setup:
 cdk deploy GitHubOidcStack -c github_repo=<owner>/<repo>
 ```
 
-If the account already has a GitHub OIDC provider, `cdk deploy` fails with `EntityAlreadyExists`.
-Import it instead:
+On a brand-new account the SSM parameter does not exist yet, and `cdk` synthesizes the whole app
+before picking which stack to deploy — so `NiceAssignmentStack` is built too and its lookup fails.
+The very first command needs the email as well:
+
 ```bash
-cdk deploy GitHubOidcStack -c github_repo=<owner>/<repo> \
-  -c existing_oidc_provider_arn=arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com
+cdk deploy GitHubOidcStack -c github_repo=<owner>/<repo> -c notification_email=you@example.com
 ```
+
+Once `NiceAssignmentStack` has been deployed once, the address lives in SSM and later commands
+need neither argument.
+
+If the account already has a GitHub OIDC provider, `cdk deploy` fails with `EntityAlreadyExists`.
 
 Put `DeployRoleArn` from the outputs into the GitHub Secrets as `AWS_DEPLOY_ROLE_ARN`, and the
 region into the variable `AWS_REGION`. Then Actions -> **Deploy Serverless Stack** -> **Run workflow**.
@@ -183,7 +197,10 @@ The pipeline runs the unit tests first and only deploys if they pass, so a broke
 I use temporary OIDC tokens instead of permanent AWS keys. If a static key leaks, hackers get access forever. I also locked the AWS role to this exact repository so no other GitHub user can use it.
 
 **Separated CI/CD and App Stacks**
-The GitHub OIDC stack is deployed once, while the application stack redeploys on every run. Keeping them apart means the pipeline's own policy contains no IAM actions at all - every privilege it uses is delegated to the CDK bootstrap roles it assumes.
+The GitHub OIDC stack is deployed once, while the application stack redeploys on every run.
+Keeping them apart means the pipeline never needs permission to create IAM resources — that
+happens through the bootstrap roles it assumes. See the security note above for where that
+boundary actually ends.
 
 **Keeping emails out of public code**
 I use AWS SSM to manage the notification email. By passing it once via the CLI `-c notification_email=`, I avoid hardcoding personal data into a public repository. AWS stores it as a plain `String` parameter; while it's not a strict secret requiring a `SecureString`, it still belongs in the cloud, not in version control. Additionally, `cdk.context.json` is added to `.gitignore` to prevent accidental leaks of this local cache.
@@ -226,13 +243,13 @@ For the scope of this assignment, resource names (e.g., `s3_lister`, `lister-lam
 Since 15 July 2026 new repositories get immutable IDs in
 the `sub` claim (`repo:owner@123456/repo@789012:...`). A trust policy written for the old format
 rejects everything with `Not authorized to perform sts:AssumeRoleWithWebIdentity`, which looks
-exactly like a missing role. The policy here matches both formats (initially the policy was written for the old format first; the pipeline run surfaced the change).
+exactly like a missing role. The policy here matches both formats (initially the policy was written for the old format; the pipeline run surfaced the change).
 
 **Region coupling**
 The OIDC role's policy is scoped to the region where `GitHubOidcStack` was deployed. If `vars.AWS_REGION` in GitHub points somewhere else, the role is still assumable but the deploy fails while reading the CDK bootstrap version, and the smoke test would fail with AccessDenied. Both stacks and the variable must point at the same region.
 
 **The trust policy matches any ref**
-The trust policy currently allows any branch or tag `(:*)`. This is safe for now because the workflow is manual (`workflow_dispatch`) and it helps with debugging. For stricter security, we should eventually restrict it to the main branch or a prod environment.
+The trust policy currently allows any branch or tag `(:*)`. This is safe for now because the workflow is manual (`workflow_dispatch`) and it helps with debugging. For stricter security, I should eventually restrict it to the main branch or a prod environment.
 
-**SSM Parameter circular dependency**
-The application stack both creates and reads the `/nice-assignment/notification-email` parameter, causing a cycle during offline `cdk synth`. A separate config stack would fix this, but we intentionally kept the single-stack design. This allows the entire project to be deployed with one command and ensures a safe failure mode (i.e., `cdk deploy` loudly refuses to run rather than silently deploying a dummy placeholder).
+**SSM Parameter synth-time lookup**
+The application stack both creates and reads the `/nice-assignment/notification-email` parameter, causing a cycle during offline `cdk synth`. A separate config stack would fix this, but I intentionally kept the single-stack design. This allows the entire project to be deployed with one command and ensures a safe failure mode (i.e., `cdk deploy` loudly refuses to run rather than silently deploying a dummy placeholder).
