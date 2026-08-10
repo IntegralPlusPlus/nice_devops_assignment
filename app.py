@@ -11,8 +11,8 @@ LAMBDA_FUNCTION_NAME = "s3_lister"
 
 app = cdk.App()
 
-env = cdk.Environment(account=os.environ["CDK_DEFAULT_ACCOUNT"], 
-                      region=os.environ["CDK_DEFAULT_REGION"])
+env = cdk.Environment(account=os.getenv("CDK_DEFAULT_ACCOUNT"),
+                      region=os.getenv("CDK_DEFAULT_REGION"))
 
 github_repo = app.node.try_get_context("github_repo") or os.environ.get("GITHUB_REPOSITORY")
 if github_repo:
@@ -34,7 +34,7 @@ if github_repo:
 notification_email = app.node.try_get_context("notification_email")
 
 NiceAssignmentStack(app, 
-                    "NiceAssignmentStack", 
+                    APP_STACK_NAME, 
                     notification_email=notification_email,
                     env=env)
 

@@ -106,7 +106,7 @@ class NiceAssignmentStack(Stack):
             iam.PolicyStatement(sid="CloudWatchLogsAccess",
                                 effect=iam.Effect.ALLOW,
                                 actions=["logs:CreateLogStream", "logs:PutLogEvents"],
-                                resources=[f"{log_group.log_group_arn}:*"]
+                                resources=[log_group.log_group_arn]
             )
         )
 
